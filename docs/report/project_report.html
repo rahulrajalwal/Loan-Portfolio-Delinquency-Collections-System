@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Loan Portfolio, Delinquency and Collections Intelligence System</title>
+<style>
+@page { size: A4; margin: 16mm 14mm 15mm 14mm; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 10.1pt; line-height: 1.48; color: #1a1a1a; margin: 0; }
+h1 { font-size: 19pt; margin: 0 0 2mm 0; color: #0b3c5d; letter-spacing: -0.3px; }
+h2 { font-size: 12.5pt; margin: 7mm 0 3mm 0; color: #0b3c5d; padding-bottom: 1.5mm; border-bottom: 2px solid #0b3c5d; page-break-after: avoid; }
+h3 { font-size: 10.8pt; margin: 5mm 0 2mm 0; color: #14547a; page-break-after: avoid; }
+h4 { font-size: 9.8pt; margin: 3.5mm 0 1.5mm 0; color: #333; page-break-after: avoid; }
+p { margin: 0 0 2.4mm 0; text-align: justify; }
+ul, ol { margin: 0 0 3mm 0; padding-left: 6mm; }
+li { margin-bottom: 1.2mm; }
+code { font-family: Consolas, "Courier New", monospace; font-size: 8.7pt; background: #eef2f6; padding: 0.3mm 1mm; border-radius: 2px; }
+pre { font-family: Consolas, "Courier New", monospace; font-size: 8.0pt; line-height: 1.36; background: #f7f9fb; border: 1px solid #d5dee6; border-left: 3px solid #0b3c5d; padding: 2.4mm 3mm; margin: 2mm 0 3mm 0; white-space: pre-wrap; page-break-inside: avoid; }
+table { border-collapse: collapse; width: 100%; margin: 2mm 0 4mm 0; font-size: 9.1pt; page-break-inside: avoid; }
+th { background: #0b3c5d; color: #fff; text-align: left; padding: 1.5mm 2mm; font-weight: 600; }
+td { border-bottom: 1px solid #dde4ea; padding: 1.3mm 2mm; vertical-align: top; }
+tr:nth-child(even) td { background: #f6f9fb; }
+.num { text-align: right; }
+.lead { font-size: 10.4pt; color: #333; border-left: 3px solid #c8d4de; padding-left: 4mm; margin: 0 0 5mm 0; font-style: italic; }
+.box { background: #f2f7fa; border: 1px solid #c8dae6; border-radius: 3px; padding: 2.5mm 3.5mm; margin: 3mm 0; page-break-inside: avoid; }
+.box.warn { background: #fdf6ec; border-color: #e8d5b0; }
+.box.key { background: #eef7f0; border-color: #c2dfc9; }
+.box h4 { margin-top: 0; }
+.meta { font-size: 9pt; color: #5a6b78; margin-bottom: 5mm; }
+.hdr { border-bottom: 3px solid #0b3c5d; padding-bottom: 3mm; margin-bottom: 5mm; }
+.pagebreak { page-break-before: always; }
+.small { font-size: 8.6pt; color: #5a6b78; }
+.q { background:#0b3c5d; color:#fff; font-size:8pt; padding:0.5mm 2mm; border-radius:2px; }
+</style></head><body>
+
+<div class="hdr">
+<h1>Loan Portfolio, Delinquency &amp; Collections Intelligence System</h1>
+<div class="meta"><strong>Rahul Meena</strong>  &middot;  IIT Gandhinagar  &middot;  Portfolio Project  &middot;  MySQL 8.0 and Python</div>
+</div>
+
+<p class="lead">A lending analytics system built on 58.4 million rows of real consumer-credit data. It answers a question every lender faces and most answer by instinct: when a collections team can only call a fraction of delinquent customers each day, which ones should they call first?</p>
+
+<h2>1. The problem statement</h2>
+
+<h3>1.1 The business situation</h3>
+<p>A consumer lender holds a book of active loans and credit cards. At any moment, some customers are behind on payments. A collections team can contact only a limited number of them each day, so the order of that queue determines what actually gets recovered.</p>
+
+<p>The instinctive ordering is by severity: call the customers who are furthest behind first. It feels obviously correct, because the worst accounts look like the biggest problem. Most collections queues are built exactly this way.</p>
+
+<div class="box warn">
+<h4>The question this project set out to test</h4>
+<p style="margin-bottom:0">Is "call the worst accounts first" actually the right ordering, and if not, what is the right one, and how much does the difference matter?</p>
+</div>
+
+<h3>1.2 Who this system is for</h3>
+<p>This is worth stating precisely, because it is easy to assume the wrong thing.</p>
+<table>
+<tr><th style="width:12%">&nbsp;</th><th>&nbsp;</th></tr>
+<tr><td><strong>It is not</strong></td><td>a screen where an agent looks up one customer and reads their balance and payment history. That is a customer-service tool.</td></tr>
+<tr><td><strong>It is not</strong></td><td>a report for the customer themselves.</td></tr>
+<tr><td><strong>It is</strong></td><td>a tool for the <strong>collections manager</strong>, who arrives on Monday with 7,211 delinquent accounts on the system, capacity for perhaps 300 calls that day, and a decision to make about where to point the team.</td></tr>
+</table>
+<p>The output is therefore a <strong>ranked list</strong>, not a record. Who to call first, second, third.</p>
+
+<h3>1.3 The same problem, in a familiar setting</h3>
+<div class="box">
+<h4>It is hospital triage</h4>
+<p>In an emergency room, patients are not treated in the order they arrived, and not by who has been waiting longest. They are treated by a combination of <em>how serious the condition is</em> and <em>how treatable it is</em>. Someone waiting six hours with a small cut goes after someone who just walked in with chest pain.</p>
+<p style="margin-bottom:0">Sorting a collections queue by "most days overdue" is the same mistake as treating patients by "longest waiting". This project builds the triage rule instead: <strong>how much money is at stake, multiplied by how likely it is to actually come back</strong>. Both of those were measured from the data, not assumed.</p>
+</div>
+
+<h3>1.4 The second question: does past behaviour predict future default?</h3>
+<p>A customer already holds a loan with the bank &mdash; a phone EMI, say, paid over the past year, some months on time and some late. That same customer now returns and asks for a new, larger loan.</p>
+<p>The bank must decide whether to approve it. And the bank already holds this person's entire payment record on the existing loan.</p>
+<p><strong>Does how they paid the old loan tell you whether the new one will go bad?</strong></p>
+<p>It feels as though it must. The second half of this project tests whether it actually does, rather than assuming it.</p>
+<p>The test is possible because the dataset contains <strong>307,511 customers whose real outcome is already known</strong> &mdash; whether each one did in fact run into payment difficulty on the new loan. Every claim can therefore be checked against reality instead of argued for.</p>
+
+<h3>1.5 Why 58 million rows produce a 7,211-row answer</h3>
+<p>The scale needs explaining, because the input and the output look mismatched.</p>
+<p>The 58 million rows are not the answer. They are how the <em>rule</em> is worked out. To establish that accounts 1 to 30 days late recover on their own roughly 55% of the time, while accounts past 90 days recover only about 5% of the time, you have to observe millions of accounts moving month by month over several years. That monthly history is what the large tables contain.</p>
+<p>The heavy computation runs <strong>once</strong>, to learn how accounts behave. What is learned is then applied to today's 7,211 delinquent customers. Large input, small output &mdash; which is normal, and is why the architecture in section 4.4 separates the two.</p>
+
+<h3>1.6 Why these questions are hard</h3>
+<ul>
+<li><strong>The evidence is buried in scale.</strong> Behavioural history lives in tables of 10 to 14 million rows. The answers are tables of a few dozen rows. Getting from one to the other is the entire task.</li>
+<li><strong>The obvious metric is misleading.</strong> "Days past due" is easy to sort by, but it measures something different from "money we might still recover".</li>
+<li><strong>Nobody sees the counterfactual.</strong> A badly ordered queue still looks busy. The loss is invisible unless someone measures it.</li>
+</ul>
+
+<h2>2. The data</h2>
+<p>The project uses <strong>Home Credit Default Risk</strong>, a real anonymised consumer-lending dataset published by Home Credit Group.</p>
+
+<table>
+<tr><th>Table</th><th class="num">Rows</th><th>One row represents</th></tr>
+<tr><td><code>application</code></td><td class="num">356,255</td><td>one loan application by one customer</td></tr>
+<tr><td><code>bureau</code></td><td class="num">1,716,428</td><td>one credit held at another institution</td></tr>
+<tr><td><code>previous_application</code></td><td class="num">1,670,214</td><td>one prior contract with this lender</td></tr>
+<tr><td><code>pos_cash_balance</code></td><td class="num">10,001,358</td><td>one month of a POS / cash loan account</td></tr>
+<tr><td><code>credit_card_balance</code></td><td class="num">3,840,312</td><td>one month of a credit-card account</td></tr>
+<tr><td><code>installments_payments</code></td><td class="num">13,605,401</td><td>one payment event (see section 4.1)</td></tr>
+<tr><td><code>bureau_balance</code></td><td class="num">27,299,925</td><td>one month of an external credit</td></tr>
+<tr><td><strong>Total</strong></td><td class="num"><strong>58,441,594</strong></td><td><strong>356,255 borrowers, 1,040,632 accounts</strong></td></tr>
+</table>
+
+<h3>2.1 Three properties that shaped every later decision</h3>
+<table>
+<tr><th style="width:30%">Property</th><th>Consequence for the analysis</th></tr>
+<tr><td><strong>Four levels of grain</strong><br><span class="small">person &rarr; contract &rarr; month &rarr; payment</span></td><td>A careless join multiplies rows. Measured later in the project: joining customers to payment events inflates a total by <strong>37.5 times</strong>.</td></tr>
+<tr><td><strong>No calendar dates</strong><br><span class="small">every date is a relative day-offset from each customer's own application</span></td><td>No calendar trends and no quarterly cohorts are possible. All time analysis had to be done in months-on-book instead.</td></tr>
+<tr><td><strong>No geography</strong><br><span class="small">only an anonymised region rating of 1 to 3</span></td><td>Regional analysis is impossible. Recorded as a limitation rather than approximated with something weaker.</td></tr>
+</table>
+
+<div class="pagebreak"></div>
+<h2>3. The approach</h2>
+<p>The work ran as a sequence of phases, each gated on evidence before the next began. One rule governed the whole project, and it overruled the plan three separate times.</p>
+
+<div class="box key">
+<h4>Measure before deciding, and let the measurement overrule the assumption</h4>
+<table style="margin-bottom:0">
+<tr><th style="width:36%">What was assumed</th><th>What measurement showed</th></tr>
+<tr><td>The payment table holds one row per installment</td><td><strong>Wrong.</strong> One row is a payment <em>event</em>. 653,483 installments were settled by two or more payments; one by twelve.</td></tr>
+<tr><td>Delinquency buckets should use the standard 30-day ladder</td><td>Only <strong>542 accounts</strong> in the whole book ever peak in the 61-90 bucket. Too thin for stable rates, so two bucket schemes were built for two different purposes.</td></tr>
+<tr><td>"Days late" should be measured at full settlement</td><td><strong>Wrong.</strong> Lateness measured at the <em>first</em> payment separates the outcome far better (1.88x lift versus 1.33x).</td></tr>
+</table>
+</div>
+
+<p>Each of those was a reasonable prior belief that the data contradicted. Recording them, rather than silently correcting them, is part of what the project demonstrates.</p>
+
+<h3>3.1 The sequence of work</h3>
+<table>
+<tr><th style="width:26%">Stage</th><th>What it produced</th></tr>
+<tr><td>Dataset selection</td><td>A documented search across 14 source families in three rounds, and an explicit justified choice</td></tr>
+<tr><td>Structure inspection</td><td>Keys, grain, referential integrity and fan-out factors, all measured rather than assumed</td></tr>
+<tr><td>Schema and loading</td><td>58.4M rows into MySQL, reconciled against source counts row for row</td></tr>
+<tr><td>Data quality</td><td>15 checks run; 17 issues logged with detection method, treatment and business impact</td></tr>
+<tr><td>Analytical layer</td><td>A pre-computed mart so downstream analysis runs on under 1M rows instead of 13.8M</td></tr>
+<tr><td>Analysis</td><td>Portfolio, repayment behaviour, delinquency, roll rates, vintage curves, early-warning signals, collections priority</td></tr>
+<tr><td>Validation and tuning</td><td>Every headline number re-derived three independent ways; query optimisation with execution plans</td></tr>
+</table>
+
+<h2>4. The work, step by step</h2>
+
+<h3>4.1 Understanding the structure &mdash; and finding a documented assumption to be wrong</h3>
+<p>Before any analysis, each table was tested for key uniqueness. Six of the seven behaved as expected. The seventh, and the largest, did not.</p>
+
+<p>The documentation implied <code>installments_payments</code> held one row per installment. Testing the key showed 653,483 duplicate rows. Investigation showed they were not errors at all:</p>
+
+<pre>SK_ID_PREV 2270983, installment 30, due day -2022, amount due 9,000
+  row 1:  paid day -2046,  amount 1,800   (24 days EARLY)
+  row 2:  paid day -2019,  amount 7,200   ( 3 days LATE)
+  total:  9,000  =  exactly the amount due</pre>
+
+<p>One installment, settled by two separate payments. Across the table, <strong>99.94%</strong> of these multi-row cases summed exactly to the amount due. The real grain is <strong>one row per payment event</strong>.</p>
+
+<div class="box warn">
+<h4>Why this mattered more than it looks</h4>
+<p style="margin-bottom:0">Comparing <code>AMT_PAYMENT</code> to <code>AMT_INSTALMENT</code> row by row, the natural thing to write, flags <strong>1,295,493 rows (9.52%)</strong> as underpayments. Aggregating first shows almost all of them were paid in full. That single mistake would have corrupted the entire repayment-behaviour analysis, and the resulting numbers would have looked completely plausible.</p>
+</div>
+
+<h3>4.2 Loading 58.4 million rows</h3>
+<p>Three configuration problems were found before loading, and two file-format traps during it.</p>
+<table>
+<tr><th style="width:32%">Issue</th><th>Resolution</th></tr>
+<tr><td><code>local_infile</code> disabled; <code>secure-file-priv</code> restricted the server to one folder</td><td>Used client-side <code>LOAD DATA LOCAL INFILE</code></td></tr>
+<tr><td><code>innodb_buffer_pool_size</code> at the 128 MB installer default</td><td>Raised to 2 GB online, no restart</td></tr>
+<tr><td>Quoted fields containing commas, e.g. <code>Spouse, partner</code></td><td><code>OPTIONALLY ENCLOSED BY</code>; verified 11,370 such rows survived intact</td></tr>
+<tr><td><strong>Empty CSV fields become <code>0</code>, not NULL</strong>, in numeric columns</td><td>Every nullable column routed through <code>NULLIF(@var, '')</code>. Without this, 1,226,791 loans would have had a zero annuity and every exposure average would have been silently wrong.</td></tr>
+<tr><td>Secondary indexes maintained across 13.6M inserts</td><td>Created after loading instead. All six built in 1.9 minutes.</td></tr>
+</table>
+<p><strong>Result:</strong> 58,441,594 rows loaded in 15.6 minutes, 0 rows skipped, every table count matching source exactly.</p>
+
+<h3>4.3 Data quality</h3>
+<p>Fifteen checks were run. Two examples show the kind of issue found.</p>
+
+<h4>A sentinel value that inverts a conclusion</h4>
+<p>18.01% of applications carried <code>DAYS_EMPLOYED = 365243</code>, which decodes to employment starting roughly 1,000 years in the future. Cross-tabulation identified it precisely:</p>
+<table>
+<tr><th>Income type</th><th class="num">Rows with sentinel</th><th class="num">Share of group</th></tr>
+<tr><td>Pensioner</td><td class="num">55,352</td><td class="num">99.98%</td></tr>
+<tr><td>Unemployed</td><td class="num">22</td><td class="num">100.00%</td></tr>
+<tr><td>All other income types</td><td class="num">0</td><td class="num">0.00%</td></tr>
+</table>
+<p>Not corrupt data, but an encoding meaning "not currently employed". Left untreated it would feed a positive 1,000-year tenure into any analysis for a group that actually defaults <em>less</em> than average (5.40% against 8.66%), inverting the conclusion.</p>
+
+<h4>Missing data that is itself informative</h4>
+<p>External credit scores were missing for a large share of customers. Testing the missingness against the outcome showed it was not random:</p>
+<table>
+<tr><th>Group</th><th class="num">Customers</th><th class="num">Default rate</th></tr>
+<tr><td>External score 3 present</td><td class="num">246,546</td><td class="num">7.77%</td></tr>
+<tr><td>External score 3 <strong>missing</strong></td><td class="num">60,965</td><td class="num"><strong>9.31%</strong></td></tr>
+</table>
+<p>Mean-filling those values would have destroyed a real signal and biased the sample at the same time. Missingness was kept as a flag instead.</p>
+
+<div class="pagebreak"></div>
+<h3>4.4 Building an analytical layer</h3>
+<p>Analysis on the raw 13.8M-row monthly panel was measured at 275.7 seconds for a single roll-rate pass. Execution plans showed this could not be optimised away (see section 5.6), so the architecture changed instead: expensive computations run <strong>once</strong> into a pre-computed mart, and all analysis then runs against tables under 1M rows.</p>
+<table>
+<tr><th>Mart table</th><th class="num">Rows</th><th>Purpose</th></tr>
+<tr><td><code>mart_customer</code></td><td class="num">356,255</td><td>customer attributes plus behavioural aggregates and the outcome</td></tr>
+<tr><td><code>mart_account</code></td><td class="num">1,040,632</td><td>each account's current state plus its full history summarised</td></tr>
+<tr><td><code>mart_roll_rate</code></td><td class="num">40</td><td>the delinquency transition matrix</td></tr>
+<tr><td><code>mart_queue_tiered</code></td><td class="num">7,211</td><td>the collections queue, small enough to inspect by hand</td></tr>
+</table>
+<p>Measured effect: the roll-rate computation went from <strong>275.7 s to 0.09 s</strong>, and a customer-level aggregation from <strong>115.5 s to 4.26 s</strong>.</p>
+
+<h3>4.5 What the analysis found</h3>
+<table>
+<tr><th style="width:38%">Finding</th><th>Evidence</th></tr>
+<tr><td><strong>The most delinquent accounts hold no money</strong></td><td>Accounts 360+ days late: 1,369 accounts, mean balance <strong>179</strong>. Accounts 1-30 days late: 5,163 accounts holding <strong>465.7M</strong>.</td></tr>
+<tr><td><strong>Ranking by severity reaches nothing</strong></td><td>Working the top 10% of the queue by days-past-due reaches <strong>0.0%</strong> of recoverable value. By money-at-risk times recovery-likelihood: <strong>79.8%</strong>.</td></tr>
+<tr><td><strong>Recovery stops at 90 days</strong></td><td>Accounts 1-30 days late recover on their own 55-59% of the time. Past 90 days that falls to <strong>4-7%</strong>, and 85-98% simply stay put.</td></tr>
+<tr><td><strong>Utilisation warns before a payment is missed</strong></td><td>Cards that have run over their limit are <strong>27 times</strong> more likely to have been delinquent than cards kept under 30% utilisation.</td></tr>
+<tr><td><strong>Demographics do not explain who is behind</strong></td><td>Delinquency is flat at <strong>2.03% to 2.36%</strong> across every income type and age band tested.</td></tr>
+</table>
+
+<h3>4.6 The answer to the second question</h3>
+<p>Recall the question from section 1.4: when a customer with an existing loan applies for a new one, does their payment history on the old loan predict whether the new one will go bad?</p>
+
+<h4>Step one: does it predict at all?</h4>
+<p>Customers were grouped by how often they paid late, and each group's real outcome was measured against the overall base rate of <strong>8.07%</strong>.</p>
+<table>
+<tr><th>Past repayment behaviour</th><th class="num">Customers</th><th class="num">Went bad on the new loan</th></tr>
+<tr><td>Never paid late</td><td class="num">170,110</td><td class="num">7.28%</td></tr>
+<tr><td>Late on up to 5% of installments</td><td class="num">50,398</td><td class="num">7.70%</td></tr>
+<tr><td>Late on 5 to 15%</td><td class="num">50,612</td><td class="num">10.07%</td></tr>
+<tr><td>Late on 15 to 30%</td><td class="num">15,919</td><td class="num">11.72%</td></tr>
+<tr><td><strong>Late on more than 30%</strong></td><td class="num">4,596</td><td class="num"><strong>14.25%</strong></td></tr>
+</table>
+<p>The gradient is clean and it runs in the right direction &mdash; roughly double, worst group against best. So the answer to "does it predict" is <strong>yes</strong>.</p>
+
+<h4>The five warning signals</h4>
+<p>Each signal is a plain yes-or-no question about the customer, worth one point. Each was measured individually against the 8.07% base rate before any of them were combined.</p>
+<table>
+<tr><th style="width:4%">#</th><th style="width:20%">Signal</th><th>What is actually tested</th><th class="num">Fires on</th><th class="num">Went bad</th><th class="num">Lift</th></tr>
+<tr><td>1</td><td>Ever 30+ days late</td><td>Any installment where the <em>first</em> payment arrived 30 or more days after the due date</td><td class="num">4,558</td><td class="num">15.18%</td><td class="num">1.88x</td></tr>
+<tr><td>2</td><td>Paid short</td><td>Paid less than the full amount due on at least one installment</td><td class="num">3,089</td><td class="num">15.83%</td><td class="num">1.96x</td></tr>
+<tr><td>3</td><td>Overdue elsewhere</td><td>Credit bureau shows a loan at <em>another lender</em> currently overdue</td><td class="num">3,397</td><td class="num">15.90%</td><td class="num"><strong>1.97x</strong></td></tr>
+<tr><td>4</td><td>Getting worse</td><td>Days-late in the last three months is higher than in the three months before</td><td class="num">30,373</td><td class="num">10.38%</td><td class="num">1.29x</td></tr>
+<tr><td>5</td><td>Chronically behind</td><td>Has been in a delinquent state for three or more months over the account's life</td><td class="num">30,820</td><td class="num">9.13%</td><td class="num">1.13x</td></tr>
+</table>
+<p>The tension is visible immediately. Signals 1 to 3 are sharp, at roughly 1.9x the base rate, but each fires on only about 1% of customers. Signals 4 and 5 cover around 10% of the book but are weak. No signal is both sharp and broad, and that tension never resolves.</p>
+
+<h4>Step two: is it useful?</h4>
+<p>Predicting and being <em>operationally useful</em> are different things. The five signals were combined into a simple count &mdash; every customer scores 0 to 5 &mdash; and the real outcome measured in each group.</p>
+<table>
+<tr><th class="num">Signals firing</th><th class="num">Customers</th><th class="num">Actually went bad</th></tr>
+<tr><td class="num">0</td><td class="num">242,267</td><td class="num">7.76%</td></tr>
+<tr><td class="num">1</td><td class="num">30,132</td><td class="num">10.02%</td></tr>
+<tr><td class="num">2</td><td class="num">16,273</td><td class="num">10.03%</td></tr>
+<tr><td class="num">3</td><td class="num">2,691</td><td class="num">13.97%</td></tr>
+<tr><td class="num">4</td><td class="num">270</td><td class="num">20.00%</td></tr>
+</table>
+<p>More signals means higher risk, so the framework does carry information. But scores of 1 and 2 are indistinguishable (10.02% against 10.03%), which is a genuine defect: the second signal a customer trips is usually one of the weak, high-volume ones and adds almost nothing. The operational trade-off is worse still.</p>
+<table>
+<tr><th>Rule</th><th class="num">Customers flagged</th><th class="num">Share of the book</th><th class="num">Of those, went bad</th><th class="num">Share of all bad loans caught</th></tr>
+<tr><td>1 or more signals</td><td class="num">49,368</td><td class="num">16.1%</td><td class="num">10.29%</td><td class="num">20.5%</td></tr>
+<tr><td>3 or more signals</td><td class="num">2,963</td><td class="num">1.0%</td><td class="num">14.55%</td><td class="num">1.7%</td></tr>
+</table>
+<p>Flag 16% of all customers and you catch one fifth of the bad loans &mdash; barely better than selecting at random. Tighten the rule until it is genuinely sharp and you are flagging 1% of the book and catching 1.7% of the problems. There is no threshold at which this framework is both accurate and broad.</p>
+
+<div class="box warn">
+<h4>Step three: the comparison that settled it</h4>
+<p>The five-signal framework was tested against the simplest alternative available &mdash; just looking at the customer's age.</p>
+<table style="margin-bottom:2mm">
+<tr><th>Customer</th><th class="num">Went bad on the new loan</th></tr>
+<tr><td>Under 30, with <strong>zero</strong> warning signals</td><td class="num"><strong>11.20%</strong></td></tr>
+<tr><td>Over 60, with <strong>two or more</strong> warning signals</td><td class="num"><strong>7.90%</strong></td></tr>
+</table>
+<p style="margin-bottom:0">A young customer with a spotless payment record is riskier than an older customer with a bad one. <strong>Age alone separates the outcome better than the entire behavioural framework does.</strong></p>
+</div>
+
+<h4>What that result actually means &mdash; and what it does not</h4>
+<p>It would be easy to read the box above as "the signals do not work". That is the wrong conclusion. There are <strong>two separate effects here, and both are real</strong>.</p>
+<table>
+<tr><th style="width:26%">Age band</th><th class="num">Zero signals</th><th class="num">Two or more signals</th></tr>
+<tr><td>Under 30</td><td class="num">11.20%</td><td class="num"><strong>16.35%</strong></td></tr>
+<tr><td>30 to 39</td><td class="num">9.22%</td><td class="num">12.51%</td></tr>
+<tr><td>40 to 49</td><td class="num">7.32%</td><td class="num">9.83%</td></tr>
+<tr><td>50 to 59</td><td class="num">5.83%</td><td class="num">8.72%</td></tr>
+<tr><td>60 and over</td><td class="num">4.55%</td><td class="num"><strong>7.90%</strong></td></tr>
+</table>
+<p><strong>Read the table across, then down.</strong></p>
+<ul>
+<li><strong>Across each row:</strong> the signals work. In <em>every single age band</em>, risk rises by roughly 40 to 50% as signals accumulate. The framework is not broken.</li>
+<li><strong>Down the first column:</strong> 11.20% falls to 4.55%. The age effect is a 2.5x spread, while the signal effect within a band is about 1.5x.</li>
+</ul>
+<p>So when the two extremes are compared &mdash; young and clean against old and troubled &mdash; age wins, and the younger customer comes out riskier. Not because the signals are meaningless, but because <strong>age moves the number further</strong>.</p>
+
+<div class="box">
+<h4>The same thing, in a setting everyone knows</h4>
+<p style="margin-bottom:0">Car insurance. A 20-year-old with a perfect driving record against a 60-year-old with two speeding tickets: the 20-year-old is the bigger risk, because age dominates. That does not make the tickets meaningless &mdash; among 20-year-olds, the one with tickets is still riskier than the one without. Both facts are true at once, and a good pricing model uses both.</p>
+</div>
+
+<h4>The honest conclusion</h4>
+<p>Past payment behaviour does predict future default, but weakly, and less well than a single demographic attribute. The recommendation reflects that: use the signals <strong>on top of</strong> other information rather than instead of it &mdash; as a <strong>referral trigger</strong>, a reason to examine an application more carefully, and never as a standalone rule to decline someone.</p>
+<p>The reason the framework is weak is <strong>coverage</strong>, not signal quality. The sharpest individual signals fire on roughly 1% of customers each. Most applicants trip no signal at all, so the framework has nothing to say about them.</p>
+
+<div class="box warn">
+<h4>One practical point that reverses the ranking</h4>
+<p style="margin-bottom:0">Age is a <strong>protected characteristic</strong> under lending regulation in most markets, and generally cannot be used to decide a credit application. So although age is statistically the stronger predictor here, it is largely unusable. Behavioural signals matter <em>operationally</em> precisely because they are information a lender is permitted to act on. A statistic being stronger does not make it the one you can use.</p>
+</div>
+
+<div class="box key">
+<h4>Why a weak result is reported rather than quietly dropped</h4>
+<p style="margin-bottom:0">The easy version of this analysis stops at the first table, reports "past lateness nearly doubles default risk", and moves on. Testing it against the dumbest available alternative &mdash; and finding that the alternative wins &mdash; is what distinguishes a finding that can be defended from one that merely sounds good. The same discipline produced two other negative results in this project: a widely assumed risk indicator ("repeated credit enquiries") turned out to carry <strong>no signal at all</strong> at 1.04x the base rate, and one of the performance optimisations attempted failed outright and is documented in section 5.6.</p>
+</div>
+
+<h2>5. The SQL</h2>
+<p>MySQL was the analytical engine, not a storage layer. Roughly <strong>2,600 lines across 17 files</strong>. The techniques below were used where a problem required them, not to demonstrate range.</p>
+
+<table>
+<tr><th style="width:30%">Technique</th><th>The problem it solved here</th></tr>
+<tr><td>Window functions (<code>LAG</code>)</td><td>Comparing each account-month to the previous one to build the transition matrix</td></tr>
+<tr><td><code>ROW_NUMBER</code>, <code>NTILE</code></td><td>Ranking the same rows two different ways to compare orderings; exposure deciles</td></tr>
+<tr><td>CTEs</td><td>Multi-step derivations kept readable and each step independently checkable</td></tr>
+<tr><td>Conditional aggregation</td><td>Counting outcomes by category in one scan rather than several</td></tr>
+<tr><td>Correlated and scalar subqueries</td><td>Comparing a computed figure against a stored one in the same result row</td></tr>
+<tr><td><code>LEFT JOIN</code> and orphan handling</td><td>Preserving the 4% of accounts whose parent contract is genuinely missing</td></tr>
+<tr><td><code>HAVING</code></td><td>Suppressing groups too small to interpret, with counts always shown</td></tr>
+<tr><td><code>EXPLAIN FORMAT=TREE</code></td><td>Diagnosing why one optimisation could not work</td></tr>
+</table>
+
+<h3>5.1 Finding the true grain <span class="q">CTE, aggregation</span></h3>
+<p>This is the query that overturned the documented assumption. It aggregates to the claimed key and asks whether the parts sum to the whole.</p>
+<pre>WITH per_installment AS (
+    SELECT SK_ID_PREV, NUM_INSTALMENT_VERSION, NUM_INSTALMENT_NUMBER,
+           COUNT(*)            AS n_payments,
+           MAX(AMT_INSTALMENT) AS amt_due,
+           SUM(AMT_PAYMENT)    AS amt_paid
+    FROM installments_payments
+    GROUP BY SK_ID_PREV, NUM_INSTALMENT_VERSION, NUM_INSTALMENT_NUMBER
+)
+SELECT COUNT(*)                                               AS installments_total,
+       SUM(n_payments &gt; 1)                                    AS installments_split,
+       MAX(n_payments)                                        AS max_payments_one_installment,
+       SUM(n_payments &gt; 1 AND ABS(amt_paid - amt_due) &lt; 0.01) AS split_and_fully_settled
+FROM per_installment;</pre>
+<p><strong>Result:</strong> 12,951,918 installments, 640,905 settled by multiple payments, a maximum of 12 payments for a single installment, and 99.94% summing exactly to the amount due. The <code>SUM(condition)</code> form works because MySQL evaluates a boolean to 1 or 0, so a count and a filter happen in one pass.</p>
+
+<div class="pagebreak"></div>
+<h3>5.2 The roll-rate matrix <span class="q">LAG, window partitioning, gap guard</span></h3>
+<p>The core delinquency question: what is the probability an account in one state this month is in another state next month? This requires comparing consecutive rows within each account.</p>
+<pre>WITH seq AS (
+    SELECT PRODUCT, SK_ID_PREV, MONTHS_BALANCE, BUCKET_ANALYTICAL,
+           LAG(BUCKET_ANALYTICAL) OVER (PARTITION BY SK_ID_PREV, PRODUCT
+                                        ORDER BY MONTHS_BALANCE) AS from_bucket,
+           LAG(MONTHS_BALANCE)    OVER (PARTITION BY SK_ID_PREV, PRODUCT
+                                        ORDER BY MONTHS_BALANCE) AS prev_mb
+    FROM stg_account_month
+)
+SELECT PRODUCT, from_bucket, BUCKET_ANALYTICAL AS to_bucket, COUNT(*) AS transitions
+FROM seq
+WHERE from_bucket IS NOT NULL
+  AND MONTHS_BALANCE = prev_mb + 1          -- consecutive months only
+GROUP BY PRODUCT, from_bucket, BUCKET_ANALYTICAL;</pre>
+<div class="box">
+<h4>The line that matters most</h4>
+<p style="margin-bottom:0"><code>AND MONTHS_BALANCE = prev_mb + 1</code>. Consecutive <em>rows</em> are not necessarily consecutive <em>months</em> &mdash; the panel has gaps. Without this guard, a jump from month -8 to month -3 would be recorded as a single month's transition, inventing movements that never happened. The number of pairs rejected for this reason was measured and reported (0.02%) rather than assumed to be zero.</p>
+</div>
+
+<h3>5.3 Comparing two orderings of the same rows <span class="q">dual ROW_NUMBER, CROSS JOIN</span></h3>
+<p>The project's central result. The same 7,211 accounts are ranked two ways, and the question asked is how much recoverable value each ordering reaches for a given amount of effort.</p>
+<pre>WITH ranked AS (
+    SELECT cure_weighted_exposure AS v,
+           ROW_NUMBER() OVER (ORDER BY cure_weighted_exposure DESC) AS rn_value,
+           ROW_NUMBER() OVER (ORDER BY DPD_NOW DESC)                AS rn_dpd,
+           COUNT(*)                    OVER () AS n,
+           SUM(cure_weighted_exposure) OVER () AS total_value
+    FROM mart_collections_queue
+)
+SELECT pct_worked,
+       ROUND(100.0*SUM(CASE WHEN rn_value &lt;= n*pct_worked/100 THEN v ELSE 0 END)
+             /MAX(total_value), 2) AS pct_value_reached_by_VALUE,
+       ROUND(100.0*SUM(CASE WHEN rn_dpd   &lt;= n*pct_worked/100 THEN v ELSE 0 END)
+             /MAX(total_value), 2) AS pct_value_reached_by_DPD
+FROM ranked
+CROSS JOIN (SELECT 5 AS pct_worked UNION SELECT 10 UNION SELECT 20
+            UNION SELECT 30 UNION SELECT 50) p
+GROUP BY pct_worked ORDER BY pct_worked;</pre>
+<p>Two <code>ROW_NUMBER</code> windows over the same rows give two orderings side by side. The <code>CROSS JOIN</code> against a small inline list produces every capacity level in one query instead of five. The empty <code>OVER ()</code> frames compute whole-set totals without a second pass.</p>
+<table>
+<tr><th class="num">Capacity worked</th><th class="num">Ranked by value</th><th class="num">Ranked by DPD</th></tr>
+<tr><td class="num">5%</td><td class="num">57.59%</td><td class="num">0.00%</td></tr>
+<tr><td class="num"><strong>10%</strong></td><td class="num"><strong>79.82%</strong></td><td class="num"><strong>0.00%</strong></td></tr>
+<tr><td class="num">20%</td><td class="num">96.29%</td><td class="num">0.00%</td></tr>
+</table>
+
+<h3>5.4 Evaluating signals against an observed outcome <span class="q">CTE, CROSS JOIN, conditional aggregation</span></h3>
+<p>Rather than asserting that certain behaviours indicate risk, each candidate signal was measured against the observed 8.0729% base rate, and the precision-versus-coverage trade-off computed at every threshold.</p>
+<pre>WITH scored AS (
+    SELECT TARGET,
+           (N_LATE_FIRST_30PLUS &gt; 0) + (N_SHORTFALL &gt; 0) + (N_BUREAU_OVERDUE &gt; 0)
+         + (N_DETERIORATING_ACCOUNTS &gt; 0) + (MONTHS_DELINQUENT &gt;= 3) AS sc
+    FROM mart_customer WHERE SOURCE = 'train'
+), tot AS (SELECT COUNT(*) n, SUM(TARGET) d FROM scored)
+SELECT th AS threshold,
+       SUM(sc &gt;= th)                                                  AS flagged,
+       ROUND(100.0*SUM(CASE WHEN sc &gt;= th THEN TARGET ELSE 0 END)
+             / NULLIF(SUM(sc &gt;= th),0), 3)                            AS precision_pct,
+       ROUND(100.0*SUM(CASE WHEN sc &gt;= th THEN TARGET ELSE 0 END)
+             / MAX(tot.d), 3)                                         AS recall_pct
+FROM scored CROSS JOIN tot
+CROSS JOIN (SELECT 1 AS th UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5) thr
+GROUP BY th ORDER BY th;</pre>
+<p>Adding booleans gives a signal count without a <code>CASE</code> ladder. The result was reported honestly: the framework reaches only a 1.80x lift at usable volume, and scores of 1 and 2 turned out statistically indistinguishable &mdash; a genuine weakness that was published rather than hidden.</p>
+
+<div class="pagebreak"></div>
+<h3>5.5 Demonstrating the fan-out error <span class="q">join cardinality</span></h3>
+<p>The same business question asked two ways, to quantify what a careless join costs.</p>
+<pre>-- CORRECT: the customer table is already at customer grain
+SELECT NAME_INCOME_TYPE, SUM(AMT_CREDIT) FROM mart_customer GROUP BY NAME_INCOME_TYPE;
+
+-- WRONG: joining to payment events repeats AMT_CREDIT once per payment
+SELECT c.NAME_INCOME_TYPE, SUM(c.AMT_CREDIT)
+FROM mart_customer c JOIN stg_installment i ON i.SK_ID_CURR = c.SK_ID_CURR
+GROUP BY c.NAME_INCOME_TYPE;</pre>
+<table>
+<tr><th>Method</th><th class="num">Result</th><th class="num">Rows aggregated</th><th class="num">Runtime</th></tr>
+<tr><td>Correct</td><td class="num">209.40 bn</td><td class="num">356,255</td><td class="num">0.69 s</td></tr>
+<tr><td>Fanned out</td><td class="num"><strong>7,843.74 bn</strong></td><td class="num">12,951,918</td><td class="num">96.42 s</td></tr>
+</table>
+<p>The wrong answer is <strong>37.5 times too large</strong> and 140 times slower. The detail that proves the point: rows inflated 36.4x but the value inflated 37.5x. If the multiplier were constant it could be divided out; because it varies per customer, the join silently re-weights the whole portfolio toward customers with more payment history.</p>
+
+<h3>5.6 An optimisation that failed, and why that is worth reporting</h3>
+<p>The roll-rate query took 275.7 seconds. The hypothesis was that it partitioned by <code>SK_ID_PREV</code> while the primary key was <code>(SK_ID_PREV, PRODUCT, MONTHS_BALANCE)</code>, forcing an unnecessary sort. Aligning them should have let the engine read rows already in order.</p>
+<pre>-&gt; Window aggregate with buffering: lag(...) OVER (PARTITION BY SK_ID_PREV ORDER BY MONTHS_BALANCE)
+    -&gt; Sort: SK_ID_PREV, MONTHS_BALANCE   (cost=1.45e+6 rows=13.2e+6)
+        -&gt; Index scan using ix_am_bucket</pre>
+<p><strong>The hypothesis was refuted:</strong> 253.4 s against 271.9 s, and both plans performed a full sort of 13.2 million rows regardless. MySQL 8 always materialises and sorts for a buffered window function and will not use clustered-index order to avoid it. This is an engine limitation, not a query-writing mistake, and no index fixes it.</p>
+<p>The response was to stop optimising the query and change the architecture: compute the matrix once into a 40-row table. <strong>275.7 s became 0.09 s.</strong></p>
+
+<h4>Two optimisations that did work</h4>
+<table>
+<tr><th>Change</th><th class="num">Before</th><th class="num">After</th><th>Why</th></tr>
+<tr><td>Covering index on the live book</td><td class="num">15.27 s</td><td class="num">0.85 s</td><td>The index holds every column the query needs, so the table is never touched</td></tr>
+<tr><td>Materialising the transition matrix</td><td class="num">275.70 s</td><td class="num">0.09 s</td><td>An unavoidable sort is paid once instead of on every run</td></tr>
+</table>
+
+<h2>6. Python</h2>
+<p>Python was used deliberately as a <em>secondary</em> tool, for the things SQL is not suited to, rather than duplicating work already done in SQL.</p>
+
+<h3>6.1 Independent validation</h3>
+<p>Everything from the analytical layer onwards read from the mart. A single error in building that mart would have propagated silently through every result that followed. So every headline number was re-derived by a third, fully separate path: <strong>pandas reading the original CSV files</strong>, never touching MySQL.</p>
+<pre>ip = pd.read_csv("installments_payments.csv",
+                 usecols=["SK_ID_PREV", "NUM_INSTALMENT_VERSION", "NUM_INSTALMENT_NUMBER"])
+check("split payments (F1)", len(ip) - len(ip.drop_duplicates()))
+
+def latest(df):
+    """One row per account: its highest (latest) MONTHS_BALANCE."""
+    idx = df.groupby("SK_ID_PREV")["MONTHS_BALANCE"].idxmax()
+    return df.loc[idx]
+
+pos_l, card_l = latest(pos), latest(card)
+check("accounts at latest month", len(pos_l) + len(card_l))</pre>
+<p>Three paths therefore produce every key figure: the analytical pipeline, a separate SQL query against the base tables, and pandas against the source CSVs. Different engines, different languages, different code.</p>
+<table>
+<tr><th>Figure</th><th class="num">Pipeline</th><th class="num">Independent SQL</th><th class="num">pandas</th></tr>
+<tr><td>Accounts at latest month</td><td class="num">1,040,632</td><td class="num">1,040,632</td><td class="num">1,040,632</td></tr>
+<tr><td>Active accounts</td><td class="num">327,101</td><td class="num">327,101</td><td class="num">327,101</td></tr>
+<tr><td>Delinquent accounts</td><td class="num">7,211</td><td class="num">7,211</td><td class="num">7,211</td></tr>
+<tr><td>Card exposure</td><td class="num">7,774.0M</td><td class="num">7,774.0M</td><td class="num">7,774.0M</td></tr>
+<tr><td>Default base rate</td><td class="num">8.0729%</td><td class="num">8.0729%</td><td class="num">8.0729%</td></tr>
+<tr><td>Split payments</td><td class="num">653,483</td><td class="num">653,483</td><td class="num">653,483</td></tr>
+</table>
+<p><strong>20 reconciliation checks in total. All exact.</strong> Three independent derivations agreeing is a far stronger claim than any single computation, and it is what allows these numbers to be stated without hedging.</p>
+
+<h3>6.2 Profiling 58 million rows within 7.3 GB of memory</h3>
+<p>The initial data profiling ran on the raw CSVs before anything reached MySQL, on a machine with 7.3 GB of RAM against 2.68 GB of files. This required chunked, streaming accumulation rather than loading tables whole:</p>
+<pre>for ch in pd.read_csv(path, chunksize=1_500_000, low_memory=False):
+    for c in ch.columns:
+        nulls[c] += int(ch[c].isna().sum())
+        if pd.api.types.is_numeric_dtype(ch[c]):
+            v = ch[c].dropna()
+            mn[c] = v.min() if c not in mn else min(mn[c], v.min())
+            mx[c] = v.max() if c not in mx else max(mx[c], v.max())
+    del ch; gc.collect()</pre>
+<p>The same approach checked key uniqueness on a 27.3M-row table by loading only the two key columns, keeping memory bounded regardless of table width.</p>
+
+<h3>6.3 Code generation</h3>
+<p>The load scripts were generated rather than hand-written. With 219 columns across eight files, every nullable column needed <code>NULLIF(@var, '')</code> handling and every column list had to match its CSV header exactly. A Python script parsed the schema for nullability, read each CSV header, and emitted the <code>LOAD DATA</code> statements &mdash; removing an entire class of transcription error that would have been invisible until the numbers came out wrong.</p>
+
+<h2>7. Running it yourself: the queries and their outputs</h2>
+<p>Everything below can be pasted straight into MySQL Workbench after <code>USE loan_portfolio;</code>. All of them are read-only. They are grouped by the two questions from section 1, and each shows what it returns so the output can be checked against the expected result.</p>
+
+<h3>7.1 Question one &mdash; the collections manager's queries</h3>
+
+<h4>Q1. How big is my problem this morning?</h4>
+<pre>SELECT PRODUCT,
+       COUNT(*)                                                      AS accounts,
+       SUM(IS_ACTIVE)                                                AS active,
+       ROUND(SUM(CASE WHEN IS_ACTIVE=1 THEN EXPOSURE END)/1000000,1) AS exposure_m,
+       SUM(IS_ACTIVE=1 AND DPD_NOW&gt;0)                                AS delinquent
+FROM mart_account
+GROUP BY PRODUCT WITH ROLLUP;</pre>
+<table>
+<tr><th>PRODUCT</th><th class="num">accounts</th><th class="num">active</th><th class="num">exposure_m</th><th class="num">delinquent</th></tr>
+<tr><td>CARD</td><td class="num">104,307</td><td class="num">90,952</td><td class="num">7,774.0</td><td class="num">1,317</td></tr>
+<tr><td>POS</td><td class="num">936,325</td><td class="num">236,149</td><td class="num">44,444.3</td><td class="num">5,894</td></tr>
+<tr><td><em>(total)</em></td><td class="num">1,040,632</td><td class="num">327,101</td><td class="num">52,218.2</td><td class="num"><strong>7,211</strong></td></tr>
+</table>
+<p><strong>Reads as:</strong> 327,101 live accounts, 7,211 of them behind. That 7,211 is the queue.</p>
+
+<h4>Q2. Where is the money? (the query that changes the decision)</h4>
+<pre>SELECT BUCKET_ANALYTICAL                             AS bucket,
+       COUNT(*)                                      AS accounts,
+       ROUND(SUM(EXPOSURE)/1000000, 2)               AS exposure_m,
+       ROUND(AVG(EXPOSURE), 0)                       AS mean_balance,
+       ROUND(AVG(cure_rate)*100, 2)                  AS recovers_pct,
+       ROUND(SUM(cure_weighted_exposure)/1000000, 2) AS recoverable_m
+FROM mart_collections_queue
+GROUP BY BUCKET_ANALYTICAL
+ORDER BY FIELD(BUCKET_ANALYTICAL,'1-30','31-90','91-360','360+');</pre>
+<table>
+<tr><th>bucket</th><th class="num">accounts</th><th class="num">exposure_m</th><th class="num">mean_balance</th><th class="num">recovers_pct</th><th class="num">recoverable_m</th></tr>
+<tr><td>1-30</td><td class="num">5,163</td><td class="num">465.66</td><td class="num">91,648</td><td class="num">55.40</td><td class="num"><strong>259.61</strong></td></tr>
+<tr><td>31-90</td><td class="num">372</td><td class="num">101.21</td><td class="num">281,140</td><td class="num">24.52</td><td class="num">23.97</td></tr>
+<tr><td>91-360</td><td class="num">307</td><td class="num">18.21</td><td class="num">63,226</td><td class="num">5.99</td><td class="num">1.21</td></tr>
+<tr><td><strong>360+</strong></td><td class="num">1,369</td><td class="num">0.20</td><td class="num"><strong>179</strong></td><td class="num">2.04</td><td class="num"><strong>0.00</strong></td></tr>
+</table>
+<p><strong>Reads as:</strong> the most overdue group has 1,369 customers owing an average of 179 each, and recovers 2% of the time. The mildest group has 5,163 customers owing 465.7 million. This single table is the reason the queue is not sorted by severity.</p>
+
+<h4>Q3. Prove the new ordering is better than the obvious one</h4>
+<pre>WITH ranked AS (
+    SELECT cure_weighted_exposure AS v,
+           ROW_NUMBER() OVER (ORDER BY cure_weighted_exposure DESC) AS rn_value,
+           ROW_NUMBER() OVER (ORDER BY DPD_NOW DESC)                AS rn_dpd,
+           COUNT(*)                    OVER () AS n,
+           SUM(cure_weighted_exposure) OVER () AS total_value
+    FROM mart_collections_queue
+)
+SELECT pct_worked AS pct_of_capacity,
+       ROUND(100.0*SUM(CASE WHEN rn_value &lt;= n*pct_worked/100 THEN v ELSE 0 END)
+             /MAX(total_value), 2) AS reached_sorting_by_VALUE,
+       ROUND(100.0*SUM(CASE WHEN rn_dpd   &lt;= n*pct_worked/100 THEN v ELSE 0 END)
+             /MAX(total_value), 2) AS reached_sorting_by_DPD
+FROM ranked
+CROSS JOIN (SELECT 5 AS pct_worked UNION SELECT 10 UNION SELECT 20
+            UNION SELECT 30 UNION SELECT 50) p
+GROUP BY pct_worked ORDER BY pct_worked;</pre>
+<table>
+<tr><th class="num">pct_of_capacity</th><th class="num">sorting by VALUE</th><th class="num">sorting by DPD</th></tr>
+<tr><td class="num">5</td><td class="num">57.59%</td><td class="num">0.00%</td></tr>
+<tr><td class="num"><strong>10</strong></td><td class="num"><strong>79.82%</strong></td><td class="num"><strong>0.00%</strong></td></tr>
+<tr><td class="num">20</td><td class="num">96.29%</td><td class="num">0.00%</td></tr>
+<tr><td class="num">50</td><td class="num">100.00%</td><td class="num">27.89%</td></tr>
+</table>
+<p><strong>Reads as:</strong> spend a day working the top 10% either way. One ordering reaches 79.8% of the recoverable money; the other reaches none of it.</p>
+
+<h4>Q4. Give me the list to work today</h4>
+<pre>SELECT SK_ID_PREV                      AS account_id,
+       PRODUCT, BUCKET_ANALYTICAL      AS bucket, DPD_NOW AS days_late,
+       ROUND(EXPOSURE, 0)              AS balance,
+       ROUND(cure_rate*100, 1)         AS recovers_pct,
+       ROUND(cure_weighted_exposure,0) AS recoverable,
+       priority_tier
+FROM mart_queue_tiered
+ORDER BY cure_weighted_exposure DESC
+LIMIT 25;</pre>
+<p><strong>Returns:</strong> 25 rows, topped by POS account 1735470 &mdash; only <strong>1 day</strong> late, but a balance of 2,202,336 and a 55% recovery rate, giving 1,211,505 of recoverable value. Sorting by days-late, that customer would never have been called.</p>
+
+<h3>7.2 Question two &mdash; the credit decision queries</h3>
+
+<h4>Q5. Does past payment behaviour predict anything?</h4>
+<pre>SELECT CASE WHEN PCT_LATE_FIRST IS NULL THEN '6: no history'
+            WHEN PCT_LATE_FIRST =  0    THEN '1: never late'
+            WHEN PCT_LATE_FIRST &lt;=  5   THEN '2: late up to 5%'
+            WHEN PCT_LATE_FIRST &lt;= 15   THEN '3: late 5-15%'
+            WHEN PCT_LATE_FIRST &lt;= 30   THEN '4: late 15-30%'
+            ELSE '5: late over 30%' END   AS repayment_history,
+       COUNT(*)                           AS customers,
+       SUM(TARGET)                        AS went_bad,
+       ROUND(100.0*AVG(TARGET), 2)        AS went_bad_pct,
+       ROUND(AVG(TARGET)/0.080729, 2)     AS vs_base_rate
+FROM mart_customer WHERE SOURCE='train'
+GROUP BY repayment_history ORDER BY repayment_history;</pre>
+<table>
+<tr><th>repayment_history</th><th class="num">customers</th><th class="num">went_bad_pct</th><th class="num">vs_base_rate</th></tr>
+<tr><td>1: never late</td><td class="num">170,110</td><td class="num">7.28</td><td class="num">0.90</td></tr>
+<tr><td>3: late 5-15%</td><td class="num">50,612</td><td class="num">10.07</td><td class="num">1.25</td></tr>
+<tr><td>5: late over 30%</td><td class="num">4,596</td><td class="num"><strong>14.25</strong></td><td class="num">1.77</td></tr>
+</table>
+<p><strong>Reads as:</strong> yes. Worst group is roughly double the best. <code>SOURCE='train'</code> restricts to the 307,511 customers whose real outcome is known.</p>
+
+<h4>Q6. Do the five signals combined work?</h4>
+<pre>SELECT signal_count,
+       COUNT(*)                        AS customers,
+       ROUND(100.0*AVG(TARGET), 2)     AS went_bad_pct,
+       ROUND(AVG(TARGET)/0.080729, 2)  AS vs_base_rate
+FROM (
+    SELECT TARGET,
+           (COALESCE(N_LATE_FIRST_30PLUS,0) &gt; 0)        -- 1 ever 30+ days late
+         + (COALESCE(N_SHORTFALL,0) &gt; 0)                -- 2 paid short
+         + (COALESCE(N_BUREAU_OVERDUE,0) &gt; 0)           -- 3 overdue elsewhere
+         + (COALESCE(N_DETERIORATING_ACCOUNTS,0) &gt; 0)   -- 4 getting worse
+         + (COALESCE(MONTHS_DELINQUENT,0) &gt;= 3)         -- 5 chronically behind
+           AS signal_count
+    FROM mart_customer WHERE SOURCE='train'
+) t
+GROUP BY signal_count ORDER BY signal_count;</pre>
+<p><strong>Returns:</strong> 0 signals = 7.76%, 1 = 10.02%, 2 = 10.03%, 3 = 13.97%, 4 = 20.00%. Rising, but note scores 1 and 2 are effectively identical. Adding booleans works because MySQL evaluates each comparison to 1 or 0.</p>
+
+<h4>Q7. The decisive test &mdash; do the signals beat simply looking at age?</h4>
+<pre>SELECT CASE WHEN AGE_YEARS &lt; 30 THEN '1: under 30' WHEN AGE_YEARS &lt; 40 THEN '2: 30-39'
+            WHEN AGE_YEARS &lt; 50 THEN '3: 40-49'    WHEN AGE_YEARS &lt; 60 THEN '4: 50-59'
+            ELSE '5: 60+' END                                    AS age_band,
+       COUNT(*)                                                  AS customers,
+       ROUND(100.0*AVG(CASE WHEN sc  = 0 THEN TARGET END), 2)    AS zero_signals_pct,
+       ROUND(100.0*AVG(CASE WHEN sc &gt;= 2 THEN TARGET END), 2)    AS two_plus_signals_pct
+FROM (
+    SELECT AGE_YEARS, TARGET,
+           (COALESCE(N_LATE_FIRST_30PLUS,0) &gt; 0) + (COALESCE(N_SHORTFALL,0) &gt; 0)
+         + (COALESCE(N_BUREAU_OVERDUE,0) &gt; 0) + (COALESCE(N_DETERIORATING_ACCOUNTS,0) &gt; 0)
+         + (COALESCE(MONTHS_DELINQUENT,0) &gt;= 3) AS sc
+    FROM mart_customer WHERE SOURCE='train'
+) t
+GROUP BY age_band ORDER BY age_band;</pre>
+<table>
+<tr><th>age_band</th><th class="num">customers</th><th class="num">zero_signals_pct</th><th class="num">two_plus_signals_pct</th></tr>
+<tr><td>1: under 30</td><td class="num">44,738</td><td class="num"><strong>11.20</strong></td><td class="num">16.35</td></tr>
+<tr><td>3: 40-49</td><td class="num">76,602</td><td class="num">7.32</td><td class="num">9.83</td></tr>
+<tr><td>5: 60+</td><td class="num">35,665</td><td class="num">4.55</td><td class="num"><strong>7.90</strong></td></tr>
+</table>
+<p><strong>Reads as:</strong> across every row the signals work. But down the first column the age effect is larger, so 11.20% (young, clean) exceeds 7.90% (old, two or more signals). This is the query that produced the conclusion in section 4.6.</p>
+
+<h2>8. Tools</h2>
+<table>
+<tr><th style="width:22%">Tool</th><th>Role in the project</th></tr>
+<tr><td><strong>MySQL 8.0</strong></td><td>The analytical engine. Schema design, bulk loading, all analysis, query optimisation. Roughly 2,600 lines across 17 files.</td></tr>
+<tr><td><strong>Python / pandas</strong></td><td>Memory-bounded profiling of 58M rows, independent validation against source files, and generation of the load scripts.</td></tr>
+<tr><td><strong>MySQL Workbench</strong></td><td>Interactive query development and inspection of results.</td></tr>
+<tr><td><strong>PowerShell</strong></td><td>Pipeline automation, timing instrumentation, credential handling via MySQL's own credential store so no password appears in any script.</td></tr>
+</table>
+
+<h2>9. Outcome</h2>
+<table>
+<tr><th style="width:40%">Deliverable</th><th>Detail</th></tr>
+<tr><td>A ranked collections queue</td><td>7,211 accounts, ordered by money at risk times observed recovery likelihood. Top 20% of the queue holds 96.3% of recoverable value.</td></tr>
+<tr><td>A measured case for re-ordering</td><td>Working the top 10% by severity reaches 0.0% of recoverable value; by value it reaches 79.8%.</td></tr>
+<tr><td>A delinquency transition matrix</td><td>Quantifies that recovery effectively stops at 90 days, from 12.5M observed month-to-month transitions.</td></tr>
+<tr><td>A tested early-warning framework</td><td>Five transparent rules, validated against an observed 8.07% base rate &mdash; and reported as modest (1.80x lift) rather than oversold.</td></tr>
+<tr><td>A full audit trail</td><td>17 data-quality issues, 11 assumptions with rejected alternatives, 17 insights rated by confidence, and 10 limitations, all documented.</td></tr>
+</table>
+
+<div class="box key">
+<h4>What the project demonstrates</h4>
+<p>Working at scale (58.4M rows), diagnosing performance from execution plans rather than guesswork, discovering that a documented assumption about the data was wrong and quantifying what it would have cost, validating every number across three independent engines, and reporting negative results &mdash; a signal that did not work, a framework weaker than expected, an optimisation that failed &mdash; alongside the positive ones.</p>
+<p style="margin-bottom:0">The final recommendation list includes one item that explicitly recommends <em>not</em> acting: a 6.5x difference between loan cohorts was found, and reported as a flag for investigation rather than a conclusion, because three confounding factors could not be separated with this data.</p>
+</div>
+
+</body></html>

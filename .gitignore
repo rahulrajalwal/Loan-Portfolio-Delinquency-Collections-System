@@ -1,0 +1,60 @@
+# ============================================================================
+#  Data files - NEVER committed
+#  The raw CSVs are 2.68 GB and are redistributed by Kaggle under competition
+#  terms. They are downloaded by the user, not shipped with this repo.
+#  See README section "Getting the data".
+# ============================================================================
+data/raw/
+data/*.csv
+data/*.zip
+*.zip
+
+# Power BI exports (145 MB; regenerate with powerbi/export_for_powerbi.py)
+powerbi/*.csv
+
+# ============================================================================
+#  Personal documents - must never be published
+# ============================================================================
+*Resume*.pdf
+*resume*.pdf
+*CV*.pdf
+
+# ============================================================================
+#  Credentials - defensive. None of these are in the tree, and none should be.
+# ============================================================================
+.mylogin.cnf
+kaggle.json
+*.key
+*.pem
+.env
+credentials.json
+my.cnf
+.my.cnf
+
+# ============================================================================
+#  Generated output
+# ============================================================================
+**/logs/
+*.log
+database/loading/logs/
+sql/**/logs/
+
+# ============================================================================
+#  Python
+# ============================================================================
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+venv/
+.venv/
+
+# ============================================================================
+#  OS / editor
+# ============================================================================
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+*.swp
+~$*
