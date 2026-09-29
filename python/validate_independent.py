@@ -1,118 +1,119 @@
 """
 PHASE 11B - INDEPENDENT VALIDATION
 
-Re-derives the project's headline numbers from the ORIGINAL CSVs using pandas.
-This is deliberately a third path:
+Re-derives the project's headline numbers from the ORIGINAL CSVs using pandas,
+as a third path entirely separate from the MySQL pipeline:
 
-    CSV -> MySQL base tables -> staging -> mart -> reported number     (the project)
-    CSV -> MySQL base tables, different query                          (Phase 11A)
-    CSV -> pandas                                                      (THIS FILE)
+    CSV -> MySQL base tables -> staging -> mart -> reported number   (pipeline)
+    CSV -> MySQL base tables, a different query                      (SQL check)
+    CSV -> pandas                                                    (THIS FILE)
 
-Different engine, different code, same source files. If all three agree, the
-number is trustworthy in a way that no single computation can be.
+If all three agree, the number is trustworthy in a way that no single
+computation can be. Everything after Phase 6 reads from the mart, so a single
+error while building it would otherwise propagate silently through five phases.
 
-Run:  python python/validate_independent.py
+Run:
+    python python/validate_independent.py
+    python python/validate_independent.py --json report.json
+    python python/validate_independent.py --data-root path/to/csvs
+
+Exits 0 when every figure reconciles, 1 otherwise - so it can gate a pipeline.
 """
-import os
-import pandas as pd
 
-RAW = r"C:\Users\acer\Documents\Data_Analytics_Project\Indian_loan_detection\data\raw"
-P = lambda f: os.path.join(RAW, f)
+from __future__ import annotations
 
-# (label, value reported by the project, tolerance)
-EXPECT = {
-    "TARGET base rate %":                (8.0729,     0.0001),
-    "train customers":                   (307511,     0),
-    "defaults":                          (24825,      0),
-    "split payments (F1)":               (653483,     0),
-    "accounts at latest month":          (1040632,    0),
-    "active accounts":                   (327101,     0),
-    "delinquent active (queue size)":    (7211,       0),
-    "CARD exposure (millions)":          (7774.0,     0.1),
-    "POS 1-30 -> 31-90 transitions":     (7291,       0),
-}
+import argparse
+from pathlib import Path
 
-results = []
-def check(label, actual):
-    exp, tol = EXPECT[label]
-    ok = abs(actual - exp) <= tol
-    results.append((label, exp, actual, ok))
-    print(f"  {'PASS' if ok else 'FAIL'}  {label:<34} expected={exp:>12,}  actual={actual:>12,}")
+from validation import (
+    ANALYTICAL,
+    ConsoleReporter,
+    Dataset,
+    Expectation,
+    JsonReporter,
+    ValidationSuite,
+)
+from validation.checks import (
+    AccountsAtLatestMonthCheck,
+    ActiveAccountsCheck,
+    CardExposureCheck,
+    ColumnMeanCheck,
+    ColumnSumCheck,
+    DelinquentAccountsCheck,
+    DuplicateKeyCheck,
+    RowCountCheck,
+    TransitionCountCheck,
+)
 
-print("=" * 92)
-print("PHASE 11B - INDEPENDENT VALIDATION (pandas, straight from CSV)")
-print("=" * 92)
+DEFAULT_DATA_ROOT = Path(__file__).resolve().parent.parent / "data" / "raw"
 
-# ---- 1. outcome ------------------------------------------------------
-print("\n[1] application_train.csv - outcome")
-app = pd.read_csv(P("application_train.csv"), usecols=["SK_ID_CURR", "TARGET"])
-check("train customers", len(app))
-check("defaults", int(app.TARGET.sum()))
-check("TARGET base rate %", round(app.TARGET.mean() * 100, 4))
-del app
 
-# ---- 2. grain (F1) ---------------------------------------------------
-print("\n[2] installments_payments.csv - grain")
-ip = pd.read_csv(P("installments_payments.csv"),
-                 usecols=["SK_ID_PREV", "NUM_INSTALMENT_VERSION", "NUM_INSTALMENT_NUMBER"])
-n_rows = len(ip)
-n_uniq = len(ip.drop_duplicates())
-check("split payments (F1)", n_rows - n_uniq)
-del ip
+def build_suite() -> ValidationSuite:
+    """Declare every figure this project publishes, and how to re-derive it.
 
-# ---- 3. the book -----------------------------------------------------
-print("\n[3] POS_CASH_balance.csv + credit_card_balance.csv - the book")
-pos = pd.read_csv(P("POS_CASH_balance.csv"),
-                  usecols=["SK_ID_PREV", "MONTHS_BALANCE", "NAME_CONTRACT_STATUS", "SK_DPD"])
-card = pd.read_csv(P("credit_card_balance.csv"),
-                   usecols=["SK_ID_PREV", "MONTHS_BALANCE", "NAME_CONTRACT_STATUS",
-                            "SK_DPD", "AMT_BALANCE"])
+    Counts use a zero tolerance: they must reproduce exactly. Card exposure
+    allows 0.1 because it is quoted to one decimal place in millions, and the
+    default rate allows 0.0001 because it is quoted to four.
+    """
+    return ValidationSuite("PHASE 11B - INDEPENDENT VALIDATION").add(
 
-def latest(df):
-    """One row per account: its highest (latest) MONTHS_BALANCE."""
-    idx = df.groupby("SK_ID_PREV")["MONTHS_BALANCE"].idxmax()
-    return df.loc[idx]
+        # --- the observed outcome, against which every signal is measured ---
+        RowCountCheck(
+            "train customers", Expectation(307_511),
+            "application_train.csv", "SK_ID_CURR"),
+        ColumnSumCheck(
+            "defaults", Expectation(24_825),
+            "application_train.csv", "TARGET"),
+        ColumnMeanCheck(
+            "TARGET base rate %", Expectation(8.0729, tolerance=0.0001),
+            "application_train.csv", "TARGET", scale=100, decimals=4),
 
-pos_l, card_l = latest(pos), latest(card)
-check("accounts at latest month", len(pos_l) + len(card_l))
+        # --- the grain finding that overturned the documentation ---
+        DuplicateKeyCheck(
+            "split payments (F1)", Expectation(653_483),
+            "installments_payments.csv",
+            ["SK_ID_PREV", "NUM_INSTALMENT_VERSION", "NUM_INSTALMENT_NUMBER"]),
 
-active = (pos_l.NAME_CONTRACT_STATUS == "Active").sum() + \
-         (card_l.NAME_CONTRACT_STATUS == "Active").sum()
-check("active accounts", int(active))
+        # --- the book: shared setup, four metrics ---
+        AccountsAtLatestMonthCheck(
+            "accounts at latest month", Expectation(1_040_632)),
+        ActiveAccountsCheck(
+            "active accounts", Expectation(327_101)),
+        DelinquentAccountsCheck(
+            "delinquent active (queue size)", Expectation(7_211)),
+        CardExposureCheck(
+            "CARD exposure (millions)", Expectation(7_774.0, tolerance=0.1)),
 
-delinq = ((pos_l.NAME_CONTRACT_STATUS == "Active") & (pos_l.SK_DPD > 0)).sum() + \
-         ((card_l.NAME_CONTRACT_STATUS == "Active") & (card_l.SK_DPD > 0)).sum()
-check("delinquent active (queue size)", int(delinq))
+        # --- one cell of the roll-rate matrix, with the gap guard ---
+        TransitionCountCheck(
+            "POS 1-30 -> 31-90 transitions", Expectation(7_291),
+            "POS_CASH_balance.csv", ANALYTICAL,
+            from_bucket="1-30", to_bucket="31-90"),
+    )
 
-card_exp = card_l.loc[card_l.NAME_CONTRACT_STATUS == "Active", "AMT_BALANCE"].sum()
-check("CARD exposure (millions)", round(card_exp / 1_000_000, 1))
-del card, card_l, pos_l
 
-# ---- 4. one roll-rate cell ------------------------------------------
-print("\n[4] POS_CASH_balance.csv - roll rate, one cell")
-def bucket(d):
-    if d == 0:   return "0-current"
-    if d <= 30:  return "1-30"
-    if d <= 90:  return "31-90"
-    if d <= 360: return "91-360"
-    return "360+"
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-root", type=Path, default=DEFAULT_DATA_ROOT,
+                        help="directory holding the raw Kaggle CSVs")
+    parser.add_argument("--json", type=str, default=None,
+                        help="also write a machine-readable report here")
+    args = parser.parse_args()
 
-pos = pos.sort_values(["SK_ID_PREV", "MONTHS_BALANCE"])
-pos["b"] = pos.SK_DPD.map(bucket)
-pos["pb"] = pos.groupby("SK_ID_PREV")["b"].shift(1)
-pos["pm"] = pos.groupby("SK_ID_PREV")["MONTHS_BALANCE"].shift(1)
-consecutive = pos.MONTHS_BALANCE == pos.pm + 1          # the gap guard
-n_trans = int(((pos.pb == "1-30") & (pos.b == "31-90") & consecutive).sum())
-check("POS 1-30 -> 31-90 transitions", n_trans)
-del pos
+    dataset = Dataset(args.data_root)
+    suite = build_suite()
+    reporter = ConsoleReporter()
 
-# ---- summary ---------------------------------------------------------
-print("\n" + "=" * 92)
-passed = sum(1 for *_, ok in results if ok)
-print(f"RESULT: {passed} of {len(results)} checks passed")
-if passed < len(results):
-    print("\nFAILURES:")
-    for label, exp, act, ok in results:
-        if not ok:
-            print(f"  {label}: expected {exp:,}, got {act:,}, diff {act-exp:+,}")
-print("=" * 92)
+    reporter.header(suite.name, dataset.name, len(suite))
+    report = suite.run(dataset, observer=reporter.result)
+    reporter.summary(report)
+
+    if args.json:
+        JsonReporter(args.json).write(report)
+        print(f"report written to {args.json}")
+
+    return report.exit_code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
